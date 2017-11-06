@@ -15,24 +15,29 @@ sc = SparkContext(conf=conf)
 sqlContext =SQLContext(sc)
 
 def convertTimeToCalendar(time):
-    weekday = datetime.datetime.fromtimestamp(np.long(time)).strftime("%w")
-    weekofyear = datetime.datetime.fromtimestamp(time).strftime("%W")
+    weekday = datetime.datetime.fromtimestamp(np.long(time/1000)).strftime("%w")
+    weekofyear = datetime.datetime.fromtimestamp(np.long(time/1000)).strftime("%W")
     return weekofyear+"_"+weekday
 
-def GuidAndWeeks(a, b):
-    return a.toString + "_" + b
+def AppendString(a, b):
+    return str(a) + "_" + str(b)
 
 def main():
-    pageviewdata = sqlContext.read.parquet("/home/hadoop/Downloads/{parquet_logfile_at_20h_35.snap}").repartition(1)
+    pageviewdata = sqlContext.read.parquet("/home/hadoop/Downloads/{parquet_logfile_at_20h_55.snap}").repartition(1)
     pageviewdata.registerTempTable("pageview")
     sqlpageview = sqlContext.sql("select guid,time_group.time_create from pageview")
 
-    groupByGuid = sqlpageview.rdd.map(lambda x : (x(0), convertTimeToCalendar(x(1))))
-    groupByGuidAndCalendars = groupByGuid.map(lambda x : (GuidAndWeeks(x[0], x[1]), 1))
-    countByGuidAndCalendars = groupByGuidAndCalendars.reduceByKey(lambda a, b : a + b).map(lambda x : (x._1.split("_")(0) + "_" + x._1.split('_')(1), (x._1.split("_")(2) + "_" + x._2.toString))).groupByKey()
+    groupByGuid = sqlpageview.rdd.map(lambda x : (x[0], convertTimeToCalendar(x[1])))
+    groupByGuidAndCalendars = groupByGuid.map(lambda x : (AppendString(x[0], x[1]), 1))
+    print(groupByGuidAndCalendars.take(10))
+
+    countByGuidAndCalendars = groupByGuidAndCalendars.reduceByKey(lambda a, b : a + b).\
+        map(lambda x : (x[0].split("_")[0] + "_" + x[0].split('_')[1], AppendString(x[0].split("_")[2],x[1])) ).\
+        groupByKey().map(lambda x:(x[0],list(x[1]))).collect()
+    print(countByGuidAndCalendars[1:10])
     if os.path.exists(dir):
         shutil.rmtree(dir)
-    countByGuidAndCalendars.saveAsTextFile(dir)
+
 
 
 if __name__ == '__main__':
